@@ -1,8 +1,83 @@
 <?php
 
+/**
+ * Simple HTTP Digest Auth script.
+ *
+ * @param array $access username => clear password :-(
+ * @param       $title
+ * @return bool
+ */
+function authUser(array $access, $title)
+{
+    if (empty($_SERVER['PHP_AUTH_DIGEST']) == true) {
+        header('HTTP/1.1 401 Unauthorized');
+        header(
+            'WWW-Authenticate: Digest realm="' . $title . '",qop="auth",nonce="' . uniqid() . '",opaque="'
+            . md5($title)
+            . '"'
+        );
+
+        die('access not granted!');
+    }
+
+    $data = http_digest_parse($_SERVER['PHP_AUTH_DIGEST']);
+    if ($data == false
+        || isset($data['username']) == false
+        || isset($access[$data['username']]) == false
+    ) {
+        die('wrong username!');
+    }
+
+    $response     = md5(
+        md5($data['username'] . ':' . $title . ':' . $access[$data['username']])
+        . ':' . $data['nonce'] . ':' . $data['nc'] . ':' . $data['cnonce'] . ':' . $data['qop'] . ':'
+        . md5($_SERVER['REQUEST_METHOD'] . ':' . $data['uri'])
+    );
+
+    if ($response !== $data['response']) {
+        die('wrong password!');
+    }
+
+    return true;
+}
+
+/**
+ * @param $input
+ * @return array|bool
+ * @see http://php.net/manual/de/features.http-auth.php
+ */
+function http_digest_parse($input) {
+    $keys = array(
+        'nonce',
+        'nc',
+        'cnonce',
+        'qop',
+        'username',
+        'uri',
+        'response'
+    );
+
+    if (preg_match_all('/(' . implode('|', $keys) . ')=(?:([\'"])([^\2]+?)\2|([^\s,]+))/', $input, $match) !== 0) {
+        $length = count($match[1]);
+        $return = array();
+        $found = array();
+
+        for ($i = 0; $i < $length; $i++) {
+            $return[$match[1][$i]] = $match[3][$i] !== '' ? $match[3][$i] : $match[4][$i];
+            $found[] = $match[1][$i];
+        }
+
+        return asort($found) == asort($keys) ? $return : false;
+    }
+
+    return false;
+}
+
+authUser(array('user' => 'password'), 'OPCache');
+
 if (!extension_loaded('Zend OPcache')) {
-	echo '<div style="background-color: #F2DEDE; color: #B94A48; padding: 1em;">You do not have the Zend OPcache extension loaded, sample data is being shown instead.</div>';
-	require 'data-sample.php';
+    echo '<div style="background-color: #F2DEDE; color: #B94A48; padding: 1em;">You do not have the Zend OPcache extension loaded, sample data is being shown instead.</div>';
+    require 'data-sample.php';
 }
 
 // Fetch configuration and status information from OpCache
